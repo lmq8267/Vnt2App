@@ -177,7 +177,6 @@ impl VntApi {
         self.stopped.load(Ordering::SeqCst)
     }
 
-    #[flutter_rust_bridge::frb(sync)]
     pub fn device_list(&self) -> Vec<RustPeerClientInfo> {
         if self.is_stopped() {
             return vec![];

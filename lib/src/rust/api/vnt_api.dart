@@ -25,7 +25,7 @@ void initLogWithPath({required String logDir, required String configPath}) =>
 abstract class VntApi implements RustOpaqueInterface {
   RustCurrentDeviceInfo currentDevice();
 
-  List<RustPeerClientInfo> deviceList();
+  Future<List<RustPeerClientInfo>> deviceList();
 
   String downStream();
 

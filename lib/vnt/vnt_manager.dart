@@ -269,7 +269,7 @@ class VntBox {
     };
   }
 
-  List<RustPeerClientInfo> peerDeviceList() {
+  Future<List<RustPeerClientInfo>> peerDeviceList() async {
     return vntApi.deviceList();
   }
 
@@ -434,7 +434,7 @@ class VntAppCall {
           return vntManager.hasConnection();
         case 'getDeviceInfo':
           // 获取设备信息：在线数量、离线数量、配置名称
-          return _getDeviceInfo();
+          return await _getDeviceInfo();
         default:
           throw PlatformException(
             code: 'Unimplemented',
@@ -445,7 +445,7 @@ class VntAppCall {
   }
 
   /// 获取设备信息
-  static Map<String, dynamic> _getDeviceInfo() {
+  static Future<Map<String, dynamic>> _getDeviceInfo() async {
     var vntBox = vntManager.getOne();
     if (vntBox == null) {
       return {
@@ -456,7 +456,7 @@ class VntAppCall {
       };
     }
 
-    var deviceList = vntBox.peerDeviceList();
+    var deviceList = await vntBox.peerDeviceList();
     int onlineCount = 0;
     int offlineCount = 0;
 

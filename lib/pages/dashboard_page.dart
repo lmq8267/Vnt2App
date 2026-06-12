@@ -235,7 +235,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  void _updateStats() {
+  Future<void> _updateStats() async {
     if (!mounted) return;
 
     int deviceCount = 0;
@@ -260,22 +260,27 @@ class _DashboardPageState extends State<DashboardPage> {
     double maxDownSpeed = _maxDownSpeed;
 
     final activeEntries = _activeVntEntries().toList();
+    // 缓存每个 VntBox 的设备列表，避免第二个循环再次调用 peerDeviceList（RPC）
+    final deviceCache = <VntBox, List<RustPeerClientInfo>>{};
 
     for (var entry in activeEntries) {
       final vntBox = entry.value;
-      final devices = vntBox.peerDeviceList();
-      deviceCount += devices.length;
+      final devices = await vntBox.peerDeviceList();
+      if (!mounted) return;
+      deviceCache[vntBox] = devices;
 
-      // 计算离线设备数
-      for (var device in devices) {
-        if (device.status != 'Online') {
-          offlineDeviceCount++;
+        deviceCount += devices.length;
+
+        // 计算离线设备数
+        for (var device in devices) {
+          if (device.status != 'Online') {
+            offlineDeviceCount++;
+          }
         }
-      }
 
-      // 解析流量字符串为字节数（用于计算速率）
-      totalUpBytes += _parseTrafficToBytes(vntBox.upStream());
-      totalDownBytes += _parseTrafficToBytes(vntBox.downStream());
+        // 解析流量字符串为字节数（用于计算速率）
+        totalUpBytes += _parseTrafficToBytes(vntBox.upStream());
+        totalDownBytes += _parseTrafficToBytes(vntBox.downStream());
     }
 
     final upStream = _formatTraffic(totalUpBytes);
@@ -291,45 +296,45 @@ class _DashboardPageState extends State<DashboardPage> {
       if (upSpeed < 0) upSpeed = 0;
       if (downSpeed < 0) downSpeed = 0;
 
-          // 添加到历史记录（保持最近100个数据点）
-          _uploadSpeedHistory.add(upSpeed);
-          _downloadSpeedHistory.add(downSpeed);
+            // 添加到历史记录（保持最近100个数据点）
+            _uploadSpeedHistory.add(upSpeed);
+            _downloadSpeedHistory.add(downSpeed);
 
-          if (_uploadSpeedHistory.length > 100) {
-            _uploadSpeedHistory.removeAt(0);
-          }
-          if (_downloadSpeedHistory.length > 100) {
-            _downloadSpeedHistory.removeAt(0);
-          }
+            if (_uploadSpeedHistory.length > 100) {
+              _uploadSpeedHistory.removeAt(0);
+            }
+            if (_downloadSpeedHistory.length > 100) {
+              _downloadSpeedHistory.removeAt(0);
+            }
 
-          // 更新当前速率显示
-          currentUpSpeed = _formatSpeed(upSpeed);
-          currentDownSpeed = _formatSpeed(downSpeed);
+            // 更新当前速率显示
+            currentUpSpeed = _formatSpeed(upSpeed);
+            currentDownSpeed = _formatSpeed(downSpeed);
 
-          // 更新峰值速度
-          if (upSpeed > _peakUpSpeed) {
-            _peakUpSpeed = upSpeed;
-          }
-          if (downSpeed > _peakDownSpeed) {
-            _peakDownSpeed = downSpeed;
-          }
+            // 更新峰值速度
+            if (upSpeed > _peakUpSpeed) {
+              _peakUpSpeed = upSpeed;
+            }
+            if (downSpeed > _peakDownSpeed) {
+              _peakDownSpeed = downSpeed;
+            }
 
-          // 累计速度用于计算平均值
-          _totalUpSpeed += upSpeed;
-          _totalDownSpeed += downSpeed;
-          _speedSampleCount++;
+            // 累计速度用于计算平均值
+            _totalUpSpeed += upSpeed;
+            _totalDownSpeed += downSpeed;
+            _speedSampleCount++;
 
-          // 计算平均速度
-          _avgUpSpeed = _totalUpSpeed / _speedSampleCount;
-          _avgDownSpeed = _totalDownSpeed / _speedSampleCount;
+            // 计算平均速度
+            _avgUpSpeed = _totalUpSpeed / _speedSampleCount;
+            _avgDownSpeed = _totalDownSpeed / _speedSampleCount;
 
-          // 计算最大速率（用于图表Y轴）
-          if (_uploadSpeedHistory.isNotEmpty) {
-            maxUpSpeed = _uploadSpeedHistory.reduce((a, b) => a > b ? a : b);
-          }
-          if (_downloadSpeedHistory.isNotEmpty) {
-            maxDownSpeed = _downloadSpeedHistory.reduce((a, b) => a > b ? a : b);
-          }
+            // 计算最大速率（用于图表Y轴）
+            if (_uploadSpeedHistory.isNotEmpty) {
+              maxUpSpeed = _uploadSpeedHistory.reduce((a, b) => a > b ? a : b);
+            }
+            if (_downloadSpeedHistory.isNotEmpty) {
+              maxDownSpeed = _downloadSpeedHistory.reduce((a, b) => a > b ? a : b);
+            }
     } else {
       _isFirstUpdate = false;
     }
@@ -338,24 +343,25 @@ class _DashboardPageState extends State<DashboardPage> {
     _lastUpBytes = totalUpBytes;
     _lastDownBytes = totalDownBytes;
 
+    // 第二个循环：复用缓存中的设备列表，不再发起 RPC 调用
     for (var entry in activeEntries) {
       final vntBox = entry.value;
-      final devices = vntBox.peerDeviceList();
+      final devices = deviceCache[vntBox]!;
       // 获取配置名
       final config = vntBox.getNetConfig();
       if (config != null) {
         configName = config.configName;
         isEncrypted = config.groupPassword.isNotEmpty;
 
-          final servers = config.effectiveServerList;
-          relayServer = servers.isEmpty ? '' : servers.first;
-          relayServerSubtitle =
-              servers.length > 1 ? '共 ${servers.length} 个服务器' : '';
-          relayServerCopyText = servers.join('\n');
+            final servers = config.effectiveServerList;
+            relayServer = servers.isEmpty ? '' : servers.first;
+            relayServerSubtitle =
+                servers.length > 1 ? '共 ${servers.length} 个服务器' : '';
+            relayServerCopyText = servers.join('\n');
 
-          // 判断虚拟IP是否为自动分配（配置中的virtualIPv4为空表示自动分配）
-          _isVirtualIpAutoAssigned = config.virtualIPv4.isEmpty;
-      }
+            // 判断虚拟IP是否为自动分配（配置中的virtualIPv4为空表示自动分配）
+            _isVirtualIpAutoAssigned = config.virtualIPv4.isEmpty;
+        }
 
         // 获取当前设备信息
         final currentDevice = vntBox.currentDevice();
@@ -414,7 +420,7 @@ class _DashboardPageState extends State<DashboardPage> {
               _pingHistory.removeAt(0);
             }
           }
-      }
+        }
     }
 
     int avgLatency = latencyCount > 0 ? (totalLatency / latencyCount).round() : 0;
@@ -425,6 +431,8 @@ class _DashboardPageState extends State<DashboardPage> {
       int failedCount = _gatewayConnectivityHistory.where((connected) => !connected).length;
       packetLoss = (failedCount / _gatewayConnectivityHistory.length) * 100;
     }
+
+    if (!mounted) return;
 
     setState(() {
       _connectionCount = activeEntries.length;
@@ -518,6 +526,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWideScreen = screenWidth > 600;
     final hasConnection = _connectionCount > 0;
+    final isInitialLoading = !hasConnection && _activeVntEntries().isNotEmpty;
     final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
@@ -537,7 +546,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SizedBox(height: 16),
 
                 // 连接状态卡片
-                _buildConnectionStatusCard(isDark, hasConnection),
+                _buildConnectionStatusCard(isDark, hasConnection, isInitialLoading),
                 const SizedBox(height: 20),
 
                 // 网络速度、质量、流量统计
@@ -609,10 +618,10 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildConnectionStatusCard(bool isDark, bool hasConnection) {
+  Widget _buildConnectionStatusCard(bool isDark, bool hasConnection, bool isInitialLoading) {
     final primaryColor = Theme.of(context).primaryColor;
     return InkWell(
-      onTap: hasConnection ? () => _showConnectionDialog(isDark) : _handleConnect,
+      onTap: hasConnection ? () => _showConnectionDialog(isDark) : (isInitialLoading ? null : _handleConnect),
       borderRadius: BorderRadius.circular(context.radius(20)),
       child: Container(
         width: double.infinity,
@@ -625,14 +634,16 @@ class _DashboardPageState extends State<DashboardPage> {
                        HSLColor.fromColor(primaryColor).withLightness(0.20).toColor()]
                     : [HSLColor.fromColor(primaryColor).withLightness(0.35).toColor(),
                        HSLColor.fromColor(primaryColor).withLightness(0.30).toColor()])
-                : [const Color(0xFFBDBDBD), const Color(0xFF9E9E9E)],
+                : (isInitialLoading
+                    ? [primaryColor.withOpacity(0.6), primaryColor.withOpacity(0.4)]
+                    : [const Color(0xFFBDBDBD), const Color(0xFF9E9E9E)]),
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(context.radius(20)),
           boxShadow: [
             BoxShadow(
-              color: (hasConnection ? primaryColor : Colors.grey)
+              color: (hasConnection ? primaryColor : (isInitialLoading ? primaryColor : Colors.grey))
                   .withOpacity(0.3),
               blurRadius: 20,
               offset: const Offset(0, 10),
@@ -648,11 +659,20 @@ class _DashboardPageState extends State<DashboardPage> {
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(context.radius(12)),
               ),
-              child: Icon(
-                hasConnection ? Icons.check_circle_outline : Icons.cloud_off_outlined,
-                color: Colors.white,
-                size: context.iconSize(32),
-              ),
+              child: isInitialLoading
+                  ? SizedBox(
+                      width: context.iconSize(28),
+                      height: context.iconSize(28),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      hasConnection ? Icons.check_circle_outline : Icons.cloud_off_outlined,
+                      color: Colors.white,
+                      size: context.iconSize(32),
+                    ),
             ),
             SizedBox(width: context.spacing(16)),
             Expanded(
@@ -660,7 +680,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    hasConnection ? '已连接' : '未连接',
+                    hasConnection ? '已连接' : (isInitialLoading ? '连接中' : '未连接'),
                     style: TextStyle(
                       fontSize: context.sp(28),
                       fontWeight: FontWeight.bold,
@@ -671,7 +691,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   Text(
                     hasConnection
                         ? (_configName.isNotEmpty ? _configName : '未知配置名')
-                        : (_defaultConfigName.isNotEmpty ? '$_defaultConfigName (点击连接)' : '点击新建配置'),
+                        : (isInitialLoading
+                            ? '正在获取设备信息...'
+                            : (_defaultConfigName.isNotEmpty ? '$_defaultConfigName (点击连接)' : '点击新建配置')),
                     style: TextStyle(
                       fontSize: context.sp(16),
                       color: Colors.white.withOpacity(0.9),
@@ -2889,7 +2911,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // 显示网络质量分析弹窗
-  void _showNetworkQualityDialog(bool isDark) {
+  Future<void> _showNetworkQualityDialog(bool isDark) async {
     final primaryColor = Theme.of(context).primaryColor;
     // 检查是否有连接
     final hasConnection = _connectionCount > 0;
@@ -2901,7 +2923,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     for (var entry in _activeVntEntries()) {
       final vntBox = entry.value;
-      final devices = vntBox.peerDeviceList();
+      final devices = await vntBox.peerDeviceList();
       for (var device in devices) {
         if (_isDeviceOnline(device.status)) {
           totalOnlineDevices++;
@@ -4136,7 +4158,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // 显示设备列表弹窗
-  void _showDevicesDialog(bool isDark) {
+  Future<void> _showDevicesDialog(bool isDark) async {
     final primaryColor = Theme.of(context).primaryColor;
     // 获取所有设备数据
     List<Map<String, dynamic>> deviceList = [];
@@ -4145,7 +4167,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     for (var entry in _activeVntEntries()) {
       final vntBox = entry.value;
-      final devices = vntBox.peerDeviceList();
+      final devices = await vntBox.peerDeviceList();
       for (var device in devices) {
         bool isOnline = _isDeviceOnline(device.status);
         if (isOnline) {

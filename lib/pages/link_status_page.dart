@@ -32,6 +32,9 @@ class _LinkStatusPageState extends State<LinkStatusPage>
   List<RustPeerClientInfo> _devices = [];
   late TabController _tabController;
 
+  // 设备虚拟IP到VntBox的映射（由_updateDevices构建，用于build阶段查找）
+  final Map<String, VntBox> _deviceToBoxMap = {};
+
   // 延迟历史数据 - 用于绘制延迟趋势图
   final Map<String, List<int>> _latencyHistory = {};
   final int _maxHistoryLength = 30; // 保留最近30个数据点
@@ -44,6 +47,9 @@ class _LinkStatusPageState extends State<LinkStatusPage>
   // 设备分组展开状态
   bool _onlineDevicesExpanded = true;
   bool _offlineDevicesExpanded = true;
+
+  // 首次是否正在加载设备列表
+  bool _isFirstDeviceLoad = true;
 
   @override
   void initState() {
@@ -116,26 +122,22 @@ class _LinkStatusPageState extends State<LinkStatusPage>
   }
 
   VntBox? _findBoxForDevice(RustPeerClientInfo device) {
-    for (final entry in _activeVntEntries()) {
-      final box = entry.value;
-      final belongsToBox = box
-          .peerDeviceList()
-          .any((peer) => peer.virtualIp == device.virtualIp);
-      if (belongsToBox) {
-        return box;
-      }
-    }
-    return null;
+    return _deviceToBoxMap[device.virtualIp];
   }
 
-  void _updateDevices() {
+  Future<void> _updateDevices() async {
     if (!mounted) return;
 
     List<RustPeerClientInfo> devices = [];
+    final newDeviceToBoxMap = <String, VntBox>{};
 
     for (var entry in _activeVntEntries()) {
       final vntBox = entry.value;
-      final boxDevices = vntBox.peerDeviceList();
+      final boxDevices = await vntBox.peerDeviceList();
+      if (!mounted) return;
+      for (final d in boxDevices) {
+        newDeviceToBoxMap[d.virtualIp] = vntBox;
+      }
       devices.addAll(boxDevices);
 
       // 更新延迟历史数据
@@ -155,11 +157,17 @@ class _LinkStatusPageState extends State<LinkStatusPage>
       }
     }
 
+    if (!mounted) return;
+
     // 按IP地址排序（从小到大）
     devices.sort((a, b) => _compareIpAddresses(a.virtualIp, b.virtualIp));
 
     setState(() {
       _devices = devices;
+      _deviceToBoxMap
+        ..clear()
+        ..addAll(newDeviceToBoxMap);
+      _isFirstDeviceLoad = false;
     });
   }
 
@@ -359,7 +367,7 @@ class _LinkStatusPageState extends State<LinkStatusPage>
           ? ListView(
               padding: EdgeInsets.all(
                   isWideScreen ? context.spacingXLarge : context.spacingMedium),
-              children: [_buildNoDevicesView(isDark)],
+              children: [_isFirstDeviceLoad ? _buildLoadingDevicesView(isDark) : _buildNoDevicesView(isDark)],
             )
           : ListView(
               padding: EdgeInsets.all(
@@ -1145,6 +1153,46 @@ class _LinkStatusPageState extends State<LinkStatusPage>
     );
   }
 
+  Widget _buildLoadingDevicesView(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color:
+            isDark ? AppTheme.darkCardBackground : AppTheme.lightCardBackground,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '正在获取设备列表...',
+            style: TextStyle(
+              fontSize: context.fontMedium,
+              fontWeight: FontWeight.w500,
+              color:
+                  isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '请稍候',
+            style: TextStyle(
+              fontSize: context.fontSmall,
+              color:
+                  isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNoDevicesView(bool isDark) {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -1805,6 +1853,7 @@ class _LinkStatusPageState extends State<LinkStatusPage>
     for (var entry in _activeVntEntries()) {
       final vntBox = entry.value;
       final currentDevice = vntBox.currentDevice();
+      final peerCount = _devices.length;
       deviceInfo = {
         'config_key': entry.key,
         'config_name': vntBox.networkConfig.configName,
@@ -1821,7 +1870,7 @@ class _LinkStatusPageState extends State<LinkStatusPage>
         'ipv6': currentDevice['ipv6'],
         'up_stream': vntBox.upStream(),
         'down_stream': vntBox.downStream(),
-        'peer_count': vntBox.peerDeviceList().length,
+        'peer_count': peerCount,
         'route_count': vntBox.routeList().length,
         'core_config': vntBox.coreConfig(),
       };

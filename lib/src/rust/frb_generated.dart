@@ -84,7 +84,7 @@ abstract class RustLibApi extends BaseApi {
   RustCurrentDeviceInfo crateApiVntApiVntApiCurrentDevice(
       {required VntApi that});
 
-  List<RustPeerClientInfo> crateApiVntApiVntApiDeviceList(
+  Future<List<RustPeerClientInfo>> crateApiVntApiVntApiDeviceList(
       {required VntApi that});
 
   String crateApiVntApiVntApiDownStream({required VntApi that});
@@ -254,14 +254,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  List<RustPeerClientInfo> crateApiVntApiVntApiDeviceList(
+  Future<List<RustPeerClientInfo>> crateApiVntApiVntApiDeviceList(
       {required VntApi that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerVntApi(
             that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 3, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_rust_peer_client_info,
@@ -2809,7 +2810,7 @@ class VntApiImpl extends RustOpaque implements VntApi {
         that: this,
       );
 
-  List<RustPeerClientInfo> deviceList() =>
+  Future<List<RustPeerClientInfo>> deviceList() =>
       RustLib.instance.api.crateApiVntApiVntApiDeviceList(
         that: this,
       );
