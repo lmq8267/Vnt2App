@@ -653,7 +653,7 @@ class ChatManager extends ChangeNotifier implements ChatNetworkDelegate {
       now: now,
     );
 
-    final peers = box.peerDeviceList();
+    final peers = await box.peerDeviceList();
     final reachablePeers = peers
         .where((peer) =>
             peer.status.trim().toLowerCase() == 'online' &&
